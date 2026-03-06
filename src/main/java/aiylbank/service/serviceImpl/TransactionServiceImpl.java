@@ -13,6 +13,7 @@ import aiylbank.repo.TransactionRepo;
 import aiylbank.service.TransactionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,7 +51,19 @@ public class TransactionServiceImpl implements TransactionService {
                 .toAccount(toAccount)
                 .amount(request.amount())
                 .idempotencyKey(request.idempotencyKey())
+                .status(TransactionStatus.FAILED)
                 .build();
+
+        if (request.idempotencyKey() != null) {
+            try {
+                transaction = transactionRepo.saveAndFlush(transaction);
+            } catch (DataIntegrityViolationException ex) {
+                log.info("Idempotency conflict detected for key: {}", request.idempotencyKey());
+                Transaction existingTransaction = transactionRepo.findByIdempotencyKey(request.idempotencyKey())
+                        .orElseThrow(() -> new TransactionException("Не удалось получить транзакцию по ключу идемпотентности"));
+                return mapToResponse(existingTransaction);
+            }
+        }
 
         try{
             validate(fromAccount, toAccount, request.amount());
