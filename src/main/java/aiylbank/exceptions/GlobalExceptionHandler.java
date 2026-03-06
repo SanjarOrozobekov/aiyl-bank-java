@@ -1,45 +1,73 @@
 package aiylbank.exceptions;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.time.Instant;
+import java.util.List;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(TransactionException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ExceptionResponse transferException(TransactionException transferException) {
-        return new ExceptionResponse(
-                transferException.getMessage(),
-                HttpStatus.BAD_REQUEST
-        );
+    public ResponseEntity<ApiError> handleTransactionException(
+            TransactionException ex,
+            HttpServletRequest request
+    ) {
+      return build(HttpStatus.BAD_REQUEST,ex.getMessage(),request.getRequestURI(),null);
     }
 
     @ExceptionHandler(EntityNotFoundException.class)
-    @ResponseStatus(HttpStatus.NOT_FOUND)
-    public ExceptionResponse entityNotFoundException(EntityNotFoundException entityNotFoundException) {
-        return new ExceptionResponse(
-                entityNotFoundException.getMessage(),
-                HttpStatus.NOT_FOUND
+    public ResponseEntity<ApiError> handleEntityNotFoundException(
+            EntityNotFoundException ex,
+            HttpServletRequest request
+    ){
+        return build(HttpStatus.NOT_FOUND,ex.getMessage(),request.getRequestURI(),null);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiError> handleMethodArgumentNotValidException(
+            MethodArgumentNotValidException ex,
+            HttpServletRequest request
+    ){
+        List<ApiError.FieldValidationError> fieldErrors = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(err -> new ApiError.FieldValidationError(err.getField(), err.getDefaultMessage()))
+                .toList();
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "Validation failed",
+                request.getRequestURI(),
+                fieldErrors
         );
     }
     @ExceptionHandler(Exception.class)
-    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public ExceptionResponse handleGlobal(Exception e) {
-        return new ExceptionResponse("Internal Server Error: " + e.getMessage(),
-                HttpStatus.INTERNAL_SERVER_ERROR);
+    public ResponseEntity<ApiError> handleException(
+            Exception ex,
+            HttpServletRequest request
+    ){
+        return build(HttpStatus.INTERNAL_SERVER_ERROR,"Internal server error",request.getRequestURI(),null);
     }
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ExceptionResponse handleValidation(MethodArgumentNotValidException e) {
-        String message = e.getBindingResult()
-                .getFieldErrors()
-                .get(0)
-                .getDefaultMessage();
 
-        return new ExceptionResponse(message, HttpStatus.BAD_REQUEST);
-    }
-}
+    private ResponseEntity<ApiError> build(
+            HttpStatus status,
+            String message,
+            String path,
+            List<ApiError.FieldValidationError> fieldErrors
+    ) {
+        ApiError body = ApiError.builder()
+                .timestamp(Instant.now())
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .message(message)
+                .path(path)
+                .fieldErrors(fieldErrors)
+                .build();
+
+        return ResponseEntity.status(status).body(body);
+    }}

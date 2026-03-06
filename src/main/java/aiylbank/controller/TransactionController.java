@@ -16,10 +16,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Slf4j
 @RestController
 @RequestMapping("/api/transfers")
 @RequiredArgsConstructor
+@Slf4j
 public class TransactionController {
     private final TransactionService transactionService;
     @Operation(
@@ -37,6 +37,6 @@ public class TransactionController {
                 request.fromAccountNumber(), request.toAccountNumber(), request.amount(),request.idempotencyKey());
 
         TransactionResponse response = transactionService.transaction(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }

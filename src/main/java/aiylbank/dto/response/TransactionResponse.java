@@ -13,7 +13,7 @@ public record TransactionResponse(
         String toAccountNumber,
         BigDecimal amount,
         TransactionStatus status,
-        LocalDateTime createdAt,
-        String reason
+        String reason,
+        LocalDateTime createdAt
 ){
 }
