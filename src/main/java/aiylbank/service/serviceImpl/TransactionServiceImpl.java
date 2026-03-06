@@ -13,6 +13,7 @@ import aiylbank.repo.TransactionRepo;
 import aiylbank.service.TransactionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,10 +33,11 @@ public class TransactionServiceImpl implements TransactionService {
         log.info("Starting transfer from {} to {} amount {}",
                 request.fromAccountNumber(), request.toAccountNumber(), request.amount());
 
-        if(request.idempotencyKey() != null){
-            Optional<Transaction> existing = transactionRepo.findByIdempotencyKey(request.idempotencyKey());
-            if(existing.isPresent()){
-                log.info("Duplicate request detected for key: {}", request.idempotencyKey());
+        String idempotencyKey = request.idempotencyKey();
+        if (idempotencyKey != null) {
+            Optional<Transaction> existing = transactionRepo.findByIdempotencyKey(idempotencyKey);
+            if (existing.isPresent()) {
+                log.info("Duplicate request detected for key: {}", idempotencyKey);
                 return mapToResponse(existing.get());
             }
         }
@@ -49,27 +51,43 @@ public class TransactionServiceImpl implements TransactionService {
                 .fromAccount(fromAccount)
                 .toAccount(toAccount)
                 .amount(request.amount())
-                .idempotencyKey(request.idempotencyKey())
+                .idempotencyKey(idempotencyKey)
+                .status(TransactionStatus.FAILED)
                 .build();
 
-        try{
-            validate(fromAccount, toAccount, request.amount());
+        if (idempotencyKey != null) {
+            Optional<TransactionResponse> existingResponse = persistOrReturnExisting(transaction, idempotencyKey);
+            if (existingResponse.isPresent()) {
+                return existingResponse.get();
+            }
+        }
 
+        try {
+            validate(fromAccount, toAccount, request.amount());
             fromAccount.decrease(request.amount());
             toAccount.increase(request.amount());
 
             transaction.setStatus(TransactionStatus.SUCCESS);
-            log.info("Transfer successful for key: {}", request.idempotencyKey());
-
+            transaction.setReason(null);
+            log.info("Transfer successful for key: {}", idempotencyKey);
             return mapToResponse(transactionRepo.save(transaction));
-        }catch (Exception e){
-            log.error("Transfer  failed: {}", e.getMessage());
+        } catch (Exception e) {
+            log.error("Transfer failed: {}", e.getMessage());
             transaction.setStatus(TransactionStatus.FAILED);
-
             transaction.setReason(e.getMessage());
+            return mapToResponse(transactionRepo.save(transaction));
+        }
+    }
 
-            Transaction savedTransaction = transactionRepo.save(transaction);
-            return mapToResponse(savedTransaction);
+    private Optional<TransactionResponse> persistOrReturnExisting(Transaction transaction, String idempotencyKey) {
+        try {
+            transactionRepo.saveAndFlush(transaction);
+            return Optional.empty();
+        } catch (DataIntegrityViolationException ex) {
+            log.info("Idempotency conflict detected for key: {}", idempotencyKey);
+            Transaction existingTransaction = transactionRepo.findByIdempotencyKey(idempotencyKey)
+                    .orElseThrow(() -> new TransactionException("Не удалось получить транзакцию по ключу идемпотентности"));
+            return Optional.of(mapToResponse(existingTransaction));
         }
     }
 
