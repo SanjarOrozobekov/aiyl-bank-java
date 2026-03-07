@@ -186,4 +186,28 @@ class TransactionServiceImplTest {
         verify(transactionRepo).saveAndFlush(any(Transaction.class));
         verify(transactionRepo, never()).save(any(Transaction.class));
     }
+
+    @Test
+    @DisplayName("Повторный idempotencyKey с другим payload: выбрасывается ошибка")
+    void transaction_IdempotencyKeyReuseWithDifferentPayload_ShouldThrow() {
+        Transaction existing = Transaction.builder()
+                .id(90L)
+                .fromAccount(sender)
+                .toAccount(receiver)
+                .amount(new BigDecimal("150.00"))
+                .status(TransactionStatus.SUCCESS)
+                .idempotencyKey(request.idempotencyKey())
+                .build();
+
+        when(transactionRepo.findByIdempotencyKey(request.idempotencyKey()))
+                .thenReturn(Optional.of(existing));
+
+        TransactionException ex = assertThrows(
+                TransactionException.class,
+                () -> transactionService.transaction(request)
+        );
+
+        assertEquals("Idempotency key already used with different transfer payload", ex.getMessage());
+        verify(transactionMapper, never()).toResponse(any(Transaction.class));
+    }
 }

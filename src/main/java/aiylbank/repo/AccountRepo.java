@@ -18,7 +18,7 @@ public interface AccountRepo extends JpaRepository<Account, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select a from Account a where a.accountNumber in :accountNumber
-            order by a.accountNumber asc
+            order by a.id asc
             """)
     List<Account> findAllForTransferLocked(@Param("accountNumber") Collection<String> accountNumber);
 }

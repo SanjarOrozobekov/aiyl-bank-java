@@ -44,6 +44,7 @@ public class TransactionServiceImpl implements TransactionService {
         if (idempotencyKey != null) {
             Optional<Transaction> existing = transactionRepo.findByIdempotencyKey(idempotencyKey);
             if (existing.isPresent()) {
+                ensureIdempotencyPayloadMatches(existing.get(), request);
                 return transactionMapper.toResponse(existing.get());
             }
         }
@@ -100,6 +101,15 @@ public class TransactionServiceImpl implements TransactionService {
         } catch (DataIntegrityViolationException ex) {
             return transactionRepo.findByIdempotencyKey(idempotencyKey)
                     .orElseThrow(() -> new TransactionException("Idempotency conflict detected"));
+        }
+    }
+
+    private void ensureIdempotencyPayloadMatches(Transaction existing,TransactionRequest request) {
+        boolean matches = existing.getFromAccount().getAccountNumber().equals(request.fromAccountNumber())
+                && existing.getToAccount().getAccountNumber().equals(request.toAccountNumber())
+                && existing.getAmount().compareTo(request.amount()) == 0;
+        if (!matches) {
+            throw new TransactionException("Idempotency key already used with different transfer payload");
         }
     }
 }
