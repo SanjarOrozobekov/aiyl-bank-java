@@ -18,22 +18,22 @@ public class GlobalExceptionHandler {
             TransactionException ex,
             HttpServletRequest request
     ) {
-      return build(HttpStatus.BAD_REQUEST,ex.getMessage(),request.getRequestURI(),null);
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI(), null);
     }
 
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<ApiError> handleEntityNotFoundException(
             EntityNotFoundException ex,
             HttpServletRequest request
-    ){
-        return build(HttpStatus.NOT_FOUND,ex.getMessage(),request.getRequestURI(),null);
+    ) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI(), null);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleMethodArgumentNotValidException(
             MethodArgumentNotValidException ex,
             HttpServletRequest request
-    ){
+    ) {
         List<ApiError.FieldValidationError> fieldErrors = ex.getBindingResult()
                 .getFieldErrors()
                 .stream()
@@ -46,12 +46,13 @@ public class GlobalExceptionHandler {
                 fieldErrors
         );
     }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleException(
             Exception ex,
             HttpServletRequest request
-    ){
-        return build(HttpStatus.INTERNAL_SERVER_ERROR,"Internal server error",request.getRequestURI(),null);
+    ) {
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", request.getRequestURI(), null);
     }
 
     private ResponseEntity<ApiError> build(
@@ -70,4 +71,5 @@ public class GlobalExceptionHandler {
                 .build();
 
         return ResponseEntity.status(status).body(body);
-    }}
+    }
+}

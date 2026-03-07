@@ -104,7 +104,7 @@ public class TransactionServiceImpl implements TransactionService {
         }
     }
 
-    private void ensureIdempotencyPayloadMatches(Transaction existing,TransactionRequest request) {
+    private void ensureIdempotencyPayloadMatches(Transaction existing, TransactionRequest request) {
         boolean matches = existing.getFromAccount().getAccountNumber().equals(request.fromAccountNumber())
                 && existing.getToAccount().getAccountNumber().equals(request.toAccountNumber())
                 && existing.getAmount().compareTo(request.amount()) == 0;

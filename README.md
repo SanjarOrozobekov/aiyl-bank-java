@@ -37,7 +37,7 @@
   "amount": 500.00,
   "idempotencyKey": "unique-uuid-v4-key"
 }
-
+```
 ## Инструкция по запуску
 
 ### 1. Предварительные требования
@@ -47,7 +47,7 @@
 ### 2. Настройка базы данных
 Вы можете настроить подключение через переменные окружения (рекомендуется) или напрямую в `src/main/resources/application.properties`:
 
-```properties
+properties
 spring.datasource.url=${DB_URL:jdbc:postgresql://localhost:5432/aiylbank}
 spring.datasource.username=${DB_USER:postgres}
 spring.datasource.password=${DB_PASSWORD:1234}

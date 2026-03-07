@@ -8,15 +8,16 @@ import java.util.List;
 
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record ApiError (
+public record ApiError(
         Instant timestamp,
         int status,
         String error,
         String message,
         String path,
         List<FieldValidationError> fieldErrors
-){
-    public record FieldValidationError (
-            String field,String message
-    ){}
+) {
+    public record FieldValidationError(
+            String field, String message
+    ) {
+    }
 }

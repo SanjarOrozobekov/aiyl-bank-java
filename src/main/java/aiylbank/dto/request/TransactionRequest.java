@@ -18,10 +18,11 @@ public record TransactionRequest(
         String toAccountNumber,
 
         @NotNull(message = "Amount must not be null")
-        @DecimalMin(value = "0.01",inclusive = true,message = "Amount must be greater than zero")
-        @Digits(integer = 12, fraction = 2,message = "Amount format is invalid")
+        @DecimalMin(value = "0.01", inclusive = true, message = "Amount must be greater than zero")
+        @Digits(integer = 12, fraction = 2, message = "Amount format is invalid")
         BigDecimal amount,
 
-        @Size(max = 100,message = "Idempotency key is too long")
+        @Size(max = 100, message = "Idempotency key is too long")
         String idempotencyKey
-) {}
+) {
+}

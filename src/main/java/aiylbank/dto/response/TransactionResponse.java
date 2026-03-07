@@ -15,5 +15,5 @@ public record TransactionResponse(
         TransactionStatus status,
         String reason,
         LocalDateTime createdAt
-){
+) {
 }
