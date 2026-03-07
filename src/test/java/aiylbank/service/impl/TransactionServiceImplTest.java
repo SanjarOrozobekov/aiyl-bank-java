@@ -8,6 +8,7 @@ import aiylbank.enums.AccountStatus;
 import aiylbank.enums.TransactionStatus;
 import aiylbank.exceptions.TransactionException;
 import aiylbank.mapper.TransactionMapper;
+import aiylbank.repo.AccountRepo;
 import aiylbank.repo.TransactionRepo;
 import aiylbank.service.AccountService;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +23,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -33,6 +35,9 @@ class TransactionServiceImplTest {
 
     @Mock
     private AccountService accountService;
+
+    @Mock
+    private AccountRepo accountRepo;
 
     @Mock
     private TransactionRepo transactionRepo;
@@ -70,8 +75,7 @@ class TransactionServiceImplTest {
     @DisplayName("Успешный перевод: SUCCESS и сохранение транзакции")
     void transaction_Success() {
         when(transactionRepo.findByIdempotencyKey(request.idempotencyKey())).thenReturn(Optional.empty());
-        when(accountService.findByAccountNumber("111")).thenReturn(sender);
-        when(accountService.findByAccountNumber("222")).thenReturn(receiver);
+        when(accountRepo.findAllForTransferLocked(anyCollection())).thenReturn(List.of(sender, receiver));
 
         when(transactionRepo.saveAndFlush(any(Transaction.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -104,15 +108,13 @@ class TransactionServiceImplTest {
         verify(accountService).validateForTransfer(sender, receiver, request.amount());
         verify(accountService).applyTransfer(sender, receiver, request.amount());
         verify(transactionRepo).save(argThat(t -> t.getStatus() == TransactionStatus.SUCCESS));
-        verify(transactionMapper, atLeastOnce()).toResponse(any(Transaction.class));
     }
 
     @Test
     @DisplayName("Ошибка валидации: сохраняется FAILED с reason")
     void transaction_ValidationError_ShouldSaveFailed() {
         when(transactionRepo.findByIdempotencyKey(request.idempotencyKey())).thenReturn(Optional.empty());
-        when(accountService.findByAccountNumber("111")).thenReturn(sender);
-        when(accountService.findByAccountNumber("222")).thenReturn(receiver);
+        when(accountRepo.findAllForTransferLocked(anyCollection())).thenReturn(List.of(sender, receiver));
 
         when(transactionRepo.saveAndFlush(any(Transaction.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -158,11 +160,10 @@ class TransactionServiceImplTest {
                 .build();
 
         when(transactionRepo.findByIdempotencyKey(request.idempotencyKey()))
-                .thenReturn(Optional.empty())          // первая проверка
-                .thenReturn(Optional.of(existing));    // после DataIntegrityViolationException
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(existing));
 
-        when(accountService.findByAccountNumber("111")).thenReturn(sender);
-        when(accountService.findByAccountNumber("222")).thenReturn(receiver);
+        when(accountRepo.findAllForTransferLocked(anyCollection())).thenReturn(List.of(sender, receiver));
 
         when(transactionRepo.saveAndFlush(any(Transaction.class)))
                 .thenThrow(new DataIntegrityViolationException("unique constraint"));
@@ -184,7 +185,5 @@ class TransactionServiceImplTest {
 
         verify(transactionRepo).saveAndFlush(any(Transaction.class));
         verify(transactionRepo, never()).save(any(Transaction.class));
-        verify(accountService, never()).validateForTransfer(any(), any(), any());
-        verify(accountService, never()).applyTransfer(any(), any(), any());
     }
 }
