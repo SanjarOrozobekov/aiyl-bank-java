@@ -2,6 +2,7 @@ package aiylbank.controller;
 
 import aiylbank.dto.request.TransactionRequest;
 import aiylbank.dto.response.TransactionResponse;
+import aiylbank.enums.TransactionStatus;
 import aiylbank.service.TransactionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -32,11 +33,14 @@ public class TransactionController {
             @ApiResponse(responseCode = "404", description = "Один из указанных счетов не найден")
     })
     @PostMapping
-    public ResponseEntity<TransactionResponse> transfer(@Valid @RequestBody TransactionRequest request) {
+    public ResponseEntity<TransactionResponse> transaction(@Valid @RequestBody TransactionRequest request) {
         log.info("Received transfer request: from {} to {} amount {} key{}",
                 request.fromAccountNumber(), request.toAccountNumber(), request.amount(),request.idempotencyKey());
 
         TransactionResponse response = transactionService.transaction(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        if (response.status() == TransactionStatus.SUCCESS) {
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 }

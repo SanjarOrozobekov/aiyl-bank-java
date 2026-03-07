@@ -5,8 +5,10 @@ import aiylbank.dto.response.TransactionResponse;
 import aiylbank.entity.Account;
 import aiylbank.entity.Transaction;
 import aiylbank.enums.TransactionStatus;
+import aiylbank.exceptions.EntityNotFoundException;
 import aiylbank.exceptions.TransactionException;
 import aiylbank.mapper.TransactionMapper;
+import aiylbank.repo.AccountRepo;
 import aiylbank.repo.TransactionRepo;
 import aiylbank.service.AccountService;
 import aiylbank.service.TransactionService;
@@ -16,34 +18,46 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class TransactionServiceImpl implements TransactionService {
+
     private final AccountService accountService;
     private final TransactionRepo transactionRepo;
+    private final AccountRepo accountRepo;
     private final TransactionMapper transactionMapper;
 
     @Override
     @Transactional
     public TransactionResponse transaction(TransactionRequest request) {
-        log.info("Starting transfer from {} to {} amount {}",
+        log.info("Processing transfer: {} -> {} amount {}",
                 request.fromAccountNumber(), request.toAccountNumber(), request.amount());
 
         String idempotencyKey = request.idempotencyKey();
 
-        if(idempotencyKey != null) {
+        if (idempotencyKey != null) {
             Optional<Transaction> existing = transactionRepo.findByIdempotencyKey(idempotencyKey);
-            if(existing.isPresent()) {
-                log.info("Duplicate request detected for key: {}", idempotencyKey);
+            if (existing.isPresent()) {
                 return transactionMapper.toResponse(existing.get());
             }
         }
 
-        Account fromAccount = accountService.findByAccountNumber(request.fromAccountNumber());
-        Account toAccount = accountService.findByAccountNumber(request.toAccountNumber());
+        List<Account> lockedAccounts = accountRepo.findAllForTransferLocked(
+                List.of(request.fromAccountNumber(), request.toAccountNumber()));
+
+        Map<String, Account> accountMap = lockedAccounts.stream()
+                .collect(Collectors.toMap(Account::getAccountNumber, a -> a));
+
+        Account fromAccount = Optional.ofNullable(accountMap.get(request.fromAccountNumber()))
+                .orElseThrow(() -> new EntityNotFoundException("Sender account not found: " + request.fromAccountNumber()));
+        Account toAccount = Optional.ofNullable(accountMap.get(request.toAccountNumber()))
+                .orElseThrow(() -> new EntityNotFoundException("Receiver account not found: " + request.toAccountNumber()));
 
         Transaction transaction = Transaction.builder()
                 .fromAccount(fromAccount)
@@ -51,39 +65,41 @@ public class TransactionServiceImpl implements TransactionService {
                 .amount(request.amount())
                 .idempotencyKey(idempotencyKey)
                 .status(TransactionStatus.FAILED)
+                .reason("PROCESSING")
                 .build();
 
-        if(idempotencyKey != null) {
-            Optional<TransactionResponse> existingResponse = persistOrReturnExisting(transaction,idempotencyKey);
-            if(existingResponse.isPresent()) {
-                return existingResponse.get();
+        if (idempotencyKey != null) {
+            transaction = persistOrReturnTransaction(transaction, idempotencyKey);
+            if (transaction.getId() != null && !TransactionStatus.FAILED.equals(transaction.getStatus())
+                    && !"PROCESSING".equals(transaction.getReason())) {
+                return transactionMapper.toResponse(transaction);
             }
+        } else {
+            transaction = transactionRepo.saveAndFlush(transaction);
         }
-        try{
+
+        try {
             accountService.validateForTransfer(fromAccount, toAccount, request.amount());
             accountService.applyTransfer(fromAccount, toAccount, request.amount());
 
             transaction.setStatus(TransactionStatus.SUCCESS);
             transaction.setReason(null);
-            log.info("Transfer successful for key: {}", request.idempotencyKey());
 
-            return transactionMapper.toResponse(transactionRepo.save(transaction));
-        }catch (Exception e){
-            log.error("Transfer  failed: {}", e.getMessage());
+        } catch (TransactionException e) {
+            log.error("Business error: {}", e.getMessage());
             transaction.setStatus(TransactionStatus.FAILED);
             transaction.setReason(e.getMessage());
-            return transactionMapper.toResponse(transactionRepo.save(transaction));
         }
+
+        return transactionMapper.toResponse(transactionRepo.save(transaction));
     }
-    private Optional<TransactionResponse> persistOrReturnExisting(Transaction transaction,String idempotencyKey) {
-        try{
-            transactionRepo.saveAndFlush(transaction);
-            return Optional.empty();
-        }catch(DataIntegrityViolationException ex){
-            log.info("Idempotency conflict detected for key: {}", idempotencyKey);
-            Transaction existingTransaction = transactionRepo.findByIdempotencyKey(idempotencyKey)
-                    .orElseThrow(() -> new TransactionException("Не удалось получить транзакцию по ключу идемпотентности"));
-            return Optional.of(transactionMapper.toResponse(existingTransaction));
+
+    private Transaction persistOrReturnTransaction(Transaction transaction, String idempotencyKey) {
+        try {
+            return transactionRepo.saveAndFlush(transaction);
+        } catch (DataIntegrityViolationException ex) {
+            return transactionRepo.findByIdempotencyKey(idempotencyKey)
+                    .orElseThrow(() -> new TransactionException("Idempotency conflict detected"));
         }
     }
 }
